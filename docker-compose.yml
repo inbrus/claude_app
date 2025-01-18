@@ -17,19 +17,26 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-booking_user}:${POSTGRES_PASSWORD:-booking_password}@db/${POSTGRES_DB:-booking_db}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      WEBAPP_URL: ${WEBAPP_URL:-http://localhost}
     depends_on:
       - db
     ports:
       - "8000:8000"
+    volumes:
+      - ./app:/app/app  # Для быстрой разработки
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   frontend:
     build: 
       context: ./webapp
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev  # Используем отдельный Dockerfile для разработки
     ports:
       - "80:80"
     depends_on:
       - backend
+    volumes:
+      - ./webapp/src:/app/src  # Для быстрой разработки
+      - ./webapp/public:/app/public
 
 volumes:
   postgres_data:

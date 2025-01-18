@@ -1,4 +1,5 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from app.core.config import settings
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -28,6 +29,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if admin:
             keyboard = [
+                [InlineKeyboardButton("Открыть панель управления", web_app=WebAppInfo(url=f"{settings.WEBAPP_URL}/admin"))],
                 [InlineKeyboardButton("Управление услугами", callback_data="manage_services")],
                 [InlineKeyboardButton("Просмотр записей", callback_data="view_appointments")]
             ]
@@ -38,7 +40,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             keyboard = [
-                [InlineKeyboardButton("Записаться", callback_data="select_service")],
+                [InlineKeyboardButton("Записаться онлайн", web_app=WebAppInfo(url=settings.WEBAPP_URL))],
                 [InlineKeyboardButton("Мои записи", callback_data="my_appointments")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
