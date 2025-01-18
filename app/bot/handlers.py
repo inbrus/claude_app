@@ -6,16 +6,18 @@ from telegram.ext import (
     ContextTypes,
     ConversationHandler,
 )
-from datetime import datetime, timedelta
 from app.crud.crud_admin import crud_admin
-from app.crud.crud_service import crud_service
-from app.crud.crud_appointment import crud_appointment
 from app.schemas.admin import AdminCreate
-from app.schemas.appointment import AppointmentCreate
 from app.db.session import SessionLocal
-
-# Состояния разговора
-SELECTING_SERVICE, SELECTING_DATE, SELECTING_TIME, CONFIRMING = range(4)
+from .admin_handlers import manage_services, view_appointments, admin_menu
+from .client_handlers import (
+    select_service,
+    select_date,
+    select_time,
+    confirm_appointment,
+    my_appointments,
+    client_menu
+)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начало взаимодействия с ботом"""
@@ -36,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             keyboard = [
-                [InlineKeyboardButton("Записаться", callback_data="book_appointment")],
+                [InlineKeyboardButton("Записаться", callback_data="select_service")],
                 [InlineKeyboardButton("Мои записи", callback_data="my_appointments")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
@@ -68,25 +70,6 @@ async def make_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
-async def book_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Начало процесса записи"""
-    db = SessionLocal()
-    try:
-        services = crud_service.get_active(db)
-        keyboard = [
-            [InlineKeyboardButton(service.name, callback_data=f"service_{service.id}")]
-            for service in services
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await update.callback_query.message.reply_text(
-            "Выберите услугу:",
-            reply_markup=reply_markup
-        )
-        return SELECTING_SERVICE
-    finally:
-        db.close()
-
 def create_bot_application(token: str) -> Application:
     """Создание и настройка приложения бота"""
     application = Application.builder().token(token).build()
@@ -95,25 +78,17 @@ def create_bot_application(token: str) -> Application:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("make_admin", make_admin))
     
-    # Обработчик записи
-    conv_handler = ConversationHandler(
-        entry_points=[CallbackQueryHandler(book_appointment, pattern="^book_appointment$")],
-        states={
-            SELECTING_SERVICE: [
-                CallbackQueryHandler(book_appointment, pattern="^service_")
-            ],
-            SELECTING_DATE: [
-                CallbackQueryHandler(book_appointment, pattern="^date_")
-            ],
-            SELECTING_TIME: [
-                CallbackQueryHandler(book_appointment, pattern="^time_")
-            ],
-            CONFIRMING: [
-                CallbackQueryHandler(book_appointment, pattern="^confirm_")
-            ],
-        },
-        fallbacks=[CommandHandler("cancel", start)],
-    )
-    application.add_handler(conv_handler)
+    # Обработчики для администраторов
+    application.add_handler(CallbackQueryHandler(manage_services, pattern="^manage_services$"))
+    application.add_handler(CallbackQueryHandler(view_appointments, pattern="^view_appointments$"))
+    application.add_handler(CallbackQueryHandler(admin_menu, pattern="^admin_menu$"))
+    
+    # Обработчики для клиентов
+    application.add_handler(CallbackQueryHandler(select_service, pattern="^select_service"))
+    application.add_handler(CallbackQueryHandler(select_date, pattern="^select_date"))
+    application.add_handler(CallbackQueryHandler(select_time, pattern="^select_time"))
+    application.add_handler(CallbackQueryHandler(confirm_appointment, pattern="^confirm"))
+    application.add_handler(CallbackQueryHandler(my_appointments, pattern="^my_appointments$"))
+    application.add_handler(CallbackQueryHandler(client_menu, pattern="^client_menu$"))
     
     return application
