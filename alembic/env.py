@@ -1,9 +1,19 @@
+import os
+import sys
 from logging.config import fileConfig
+
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+
 from alembic import context
+
+# Добавляем путь к проекту
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# Импортируем модели и конфигурацию
 from app.core.config import settings
 from app.models.base import Base
+from app.models.models import Admin, Service, Appointment
 
 config = context.config
 
@@ -30,6 +40,7 @@ def run_migrations_offline() -> None:
 def run_migrations_online() -> None:
     configuration = config.get_section(config.config_ini_section)
     configuration["sqlalchemy.url"] = get_url()
+    
     connectable = engine_from_config(
         configuration,
         prefix="sqlalchemy.",
@@ -38,7 +49,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata
         )
 
         with context.begin_transaction():

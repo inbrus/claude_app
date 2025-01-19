@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
+from .service import Service
 
 class AppointmentBase(BaseModel):
     client_telegram_id: str
@@ -19,7 +20,7 @@ class AppointmentUpdate(BaseModel):
 class Appointment(AppointmentBase):
     id: int
     status: str
-    service: "Service"
+    service: Service
 
     class Config:
         from_attributes = True

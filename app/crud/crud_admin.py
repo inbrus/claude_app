@@ -1,11 +1,20 @@
-from typing import Optional
 from sqlalchemy.orm import Session
-from app.crud.base import CRUDBase
 from app.models.models import Admin
-from app.schemas.admin import AdminCreate, Admin as AdminSchema
+from typing import Optional
 
-class CRUDAdmin(CRUDBase[Admin, AdminCreate, AdminSchema]):
-    def get_by_telegram_id(self, db: Session, telegram_id: str) -> Optional[Admin]:
+class CRUDAdmin:
+    async def get_by_telegram_id(self, db: Session, telegram_id: str) -> Optional[Admin]:
         return db.query(Admin).filter(Admin.telegram_id == telegram_id).first()
 
-crud_admin = CRUDAdmin(Admin)
+    async def create(self, db: Session, telegram_id: str, username: str) -> Admin:
+        db_admin = Admin(
+            telegram_id=telegram_id,
+            username=username,
+            is_active=True
+        )
+        db.add(db_admin)
+        db.commit()
+        db.refresh(db_admin)
+        return db_admin
+
+crud_admin = CRUDAdmin()
