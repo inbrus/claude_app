@@ -1,5 +1,5 @@
-cat > .github/workflows/deploy.yml << 'EOF'
 name: Deploy to FTP
+
 on:
   push:
     branches: [ feature/telegram-booking-app-initial ]
@@ -9,16 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    
-    - name: Setup Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.8'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
     
     - name: FTP Deploy
       uses: SamKirkland/FTP-Deploy-Action@4.0.0
@@ -34,4 +24,3 @@ jobs:
           **/node_modules/**
           **/__pycache__/**
           .env
-EOF
