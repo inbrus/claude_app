@@ -17,7 +17,7 @@ jobs:
         username: ${{ secrets.FTP_USERNAME }}
         password: ${{ secrets.FTP_PASSWORD }}
         local-dir: ./
-        server-dir: /www/bookingfortomorrow.ru/claude_app/
+        server-dir: /var/www/u2977056/data/www/bookingfortomorrow.ru/claude_app/
         exclude: |
           **/.git*
           **/.git*/**
