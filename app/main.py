@@ -19,6 +19,15 @@ from app.bot.admin_handlers import (
     ENTER_SERVICE_NAME, ENTER_SERVICE_DESCRIPTION, ENTER_SERVICE_PRICE,
     ENTER_SERVICE_DURATION, CONFIRM_SERVICE, EDIT_SERVICE_FIELD
 )
+from app.bot.schedule_handlers import (
+    manage_schedule, edit_day, start_set_working,
+    process_start_time, process_end_time,
+    process_break_start, process_break_end,
+    confirm_schedule, toggle_day,
+    ENTER_START_TIME, ENTER_END_TIME,
+    ENTER_BREAK_START, ENTER_BREAK_END,
+    CONFIRM_SCHEDULE
+)
 
 # Настройка логирования
 logging.basicConfig(
@@ -121,7 +130,11 @@ async def button_callback(update: Update, context):
     elif query.data == 'manage_services':
         await manage_services(update, context)
     elif query.data == 'manage_schedule':
-        await query.message.reply_text("Управление расписанием:")
+        await manage_schedule(update, context)
+    elif query.data.startswith('edit_day_'):
+        await edit_day(update, context)
+    elif query.data.startswith('toggle_day_'):
+        await toggle_day(update, context)
     elif query.data == 'admin_menu':
         await admin_menu(update, context)
     elif query.data == 'view_appointments':
@@ -174,11 +187,31 @@ edit_field_handler = ConversationHandler(
     ]
 )
 
+# Создаем обработчик диалога настройки расписания
+schedule_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(start_set_working, pattern='^set_working_\d+$')],
+    states={
+        ENTER_START_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_start_time)],
+        ENTER_END_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_end_time)],
+        ENTER_BREAK_START: [
+            CallbackQueryHandler(process_break_start, pattern='^set_break$'),
+            CallbackQueryHandler(confirm_schedule, pattern='^skip_break$')
+        ],
+        ENTER_BREAK_END: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_break_end)],
+        CONFIRM_SCHEDULE: [CallbackQueryHandler(confirm_schedule, pattern='^confirm_schedule$')]
+    },
+    fallbacks=[
+        CallbackQueryHandler(edit_day, pattern='^edit_day_\d+$'),
+        CallbackQueryHandler(manage_schedule, pattern='^manage_schedule$')
+    ]
+)
+
 # Регистрируем обработчики
 bot.add_handler(CommandHandler("start", start_command))
 bot.add_handler(CommandHandler("make_admin", make_admin_command))
 bot.add_handler(add_service_handler)
 bot.add_handler(edit_field_handler)
+bot.add_handler(schedule_handler)
 bot.add_handler(CallbackQueryHandler(button_callback))
 
 @app.post("/webhook")
