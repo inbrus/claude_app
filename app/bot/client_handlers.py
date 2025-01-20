@@ -145,35 +145,330 @@ async def my_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         user = update.effective_user
-        appointments = crud_appointment.get_by_client(db, str(user.id))
+        # Получаем активные и прошлые записи
+        current_appointments = crud_appointment.get_by_client(
+            db,
+            client_telegram_id=str(user.id),
+            include_past=False
+        )
         
-        if not appointments:
-            keyboard = [[InlineKeyboardButton("« Назад", callback_data="client_menu")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+        past_appointments = crud_appointment.get_by_client(
+            db,
+            client_telegram_id=str(user.id),
+            include_past=True
+        )
+        past_appointments = [apt for apt in past_appointments if apt.appointment_time < datetime.now()]
+        
+        if not current_appointments and not past_appointments:
+            keyboard = [
+                [InlineKeyboardButton("📝 Записаться", callback_data="select_service")],
+                [InlineKeyboardButton("« Назад", callback_data="client_menu")]
+            ]
             await update.callback_query.message.edit_text(
-                "У вас нет активных записей.",
-                reply_markup=reply_markup
+                "У вас пока нет записей.",
+                reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
         
         text = "Ваши записи:\n\n"
-        for apt in appointments:
-            service = crud_service.get(db, id=apt.service_id)
-            text += (
-                f"📅 {apt.appointment_time.strftime('%d.%m.%Y %H:%M')}\n"
-                f"💇‍♀️ {service.name}\n"
-                f"💰 {service.price}₽\n"
-                f"Status: {apt.status}\n\n"
-            )
+        keyboard = []
         
-        keyboard = [
+        if current_appointments:
+            text += "📅 Предстоящие записи:\n\n"
+            for apt in sorted(current_appointments, key=lambda x: x.appointment_time):
+                text += (
+                    f"Дата: {apt.appointment_time.strftime('%d.%m.%Y')}\n"
+                    f"Время: {apt.appointment_time.strftime('%H:%M')}\n"
+                    f"Услуга: {apt.service.name}\n"
+                    f"Статус: {apt.status}\n\n"
+                )
+                
+                # Добавляем кнопки управления для каждой записи
+                if apt.status != "cancelled":
+                    keyboard.append([
+                        InlineKeyboardButton(
+                            f"⚙️ {apt.appointment_time.strftime('%d.%m.%Y %H:%M')}",
+                            callback_data=f"manage_client_appointment_{apt.id}"
+                        )
+                    ])
+        
+        if past_appointments:
+            text += "\n📅 Прошлые записи:\n\n"
+            for apt in sorted(past_appointments, key=lambda x: x.appointment_time, reverse=True)[:5]:
+                text += (
+                    f"Дата: {apt.appointment_time.strftime('%d.%m.%Y')}\n"
+                    f"Время: {apt.appointment_time.strftime('%H:%M')}\n"
+                    f"Услуга: {apt.service.name}\n"
+                    f"Статус: {apt.status}\n\n"
+                )
+        
+        keyboard.extend([
+            [InlineKeyboardButton("📝 Записаться", callback_data="select_service")],
             [InlineKeyboardButton("« Назад", callback_data="client_menu")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        ])
+        
         await update.callback_query.message.edit_text(
             text,
-            reply_markup=reply_markup
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+    finally:
+        db.close()
+
+async def manage_client_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление конкретной записью клиентом"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment or str(query.from_user.id) != appointment.client_telegram_id:
+            await query.message.edit_text(
+                "Запись не найдена или у вас нет прав для её управления.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+            return
+        
+        text = (
+            f"Управление записью:\n\n"
+            f"Услуга: {appointment.service.name}\n"
+            f"Дата: {appointment.appointment_time.strftime('%d.%m.%Y')}\n"
+            f"Время: {appointment.appointment_time.strftime('%H:%M')}\n"
+            f"Статус: {appointment.status}\n"
+        )
+        
+        keyboard = []
+        if appointment.status != "cancelled":
+            keyboard.extend([
+                [InlineKeyboardButton("🕒 Перенести", callback_data=f"reschedule_appointment_{appointment_id}")],
+                [InlineKeyboardButton("❌ Отменить", callback_data=f"client_cancel_appointment_{appointment_id}")]
+            ])
+        
+        keyboard.append([InlineKeyboardButton("« К моим записям", callback_data="my_appointments")])
+        
+        await query.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def client_cancel_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Отмена записи клиентом"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment or str(query.from_user.id) != appointment.client_telegram_id:
+            await query.message.edit_text(
+                "Запись не найдена или у вас нет прав для её управления.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+            return
+        
+        # Запрос подтверждения
+        text = (
+            f"Вы действительно хотите отменить запись?\n\n"
+            f"Услуга: {appointment.service.name}\n"
+            f"Дата: {appointment.appointment_time.strftime('%d.%m.%Y')}\n"
+            f"Время: {appointment.appointment_time.strftime('%H:%M')}"
+        )
+        
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ Да", callback_data=f"confirm_client_cancel_{appointment_id}"),
+                InlineKeyboardButton("❌ Нет", callback_data=f"manage_client_appointment_{appointment_id}")
+            ]
+        ]
+        
+        await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    finally:
+        db.close()
+
+async def confirm_client_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение отмены записи клиентом"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.update_status(
+            db,
+            appointment_id=appointment_id,
+            new_status="cancelled"
+        )
+        
+        if appointment:
+            # Отправляем уведомление администратору
+            await notify_admin_appointment_cancelled(context.bot, appointment.admin_id, appointment.id)
+            
+            await query.message.edit_text(
+                "✅ Запись успешно отменена!",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+        else:
+            await query.message.edit_text(
+                "Произошла ошибка при отмене записи.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+    finally:
+        db.close()
+
+async def start_reschedule_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало процесса переноса записи"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment or str(query.from_user.id) != appointment.client_telegram_id:
+            await query.message.edit_text(
+                "Запись не найдена или у вас нет прав для её управления.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+            return
+        
+        # Получаем доступные слоты для этой услуги
+        today = datetime.now().date()
+        keyboard = []
+        for i in range(14):  # Показываем записи на 2 недели вперед
+            date = today + timedelta(days=i)
+            keyboard.append([
+                InlineKeyboardButton(
+                    date.strftime('%d.%m.%Y'),
+                    callback_data=f"reschedule_date_{appointment_id}_{date.isoformat()}"
+                )
+            ])
+        keyboard.append([
+            InlineKeyboardButton("« Отмена", callback_data=f"manage_client_appointment_{appointment_id}")
+        ])
+        
+        await query.message.edit_text(
+            f"Текущее время записи: {appointment.appointment_time.strftime('%d.%m.%Y %H:%M')}\n"
+            f"Выберите новую дату:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def select_reschedule_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор новой даты для переноса записи"""
+    query = update.callback_query
+    appointment_id, date_str = query.data.split('_')[-2:]
+    appointment_id = int(appointment_id)
+    selected_date = datetime.fromisoformat(date_str)
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment or str(query.from_user.id) != appointment.client_telegram_id:
+            await query.message.edit_text(
+                "Запись не найдена или у вас нет прав для её управления.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+            return
+        
+        # Получаем доступные слоты
+        available_slots = crud_appointment.get_available_slots(
+            db,
+            admin_id=appointment.admin_id,
+            date=selected_date,
+            service_duration=appointment.service.duration
+        )
+        
+        if not available_slots:
+            await query.message.edit_text(
+                "На эту дату нет свободных окон.\n"
+                "Пожалуйста, выберите другую дату:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К выбору даты", callback_data=f"reschedule_appointment_{appointment_id}")
+                ]])
+            )
+            return
+        
+        # Показываем доступные слоты
+        keyboard = []
+        for slot in available_slots:
+            keyboard.append([
+                InlineKeyboardButton(
+                    slot.strftime('%H:%M'),
+                    callback_data=f"confirm_reschedule_{appointment_id}_{slot.isoformat()}"
+                )
+            ])
+        keyboard.append([
+            InlineKeyboardButton("« К выбору даты", callback_data=f"reschedule_appointment_{appointment_id}")
+        ])
+        
+        await query.message.edit_text(
+            f"Выбрана дата: {selected_date.strftime('%d.%m.%Y')}\n"
+            f"Выберите новое время:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def confirm_reschedule(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Подтверждение переноса записи"""
+    query = update.callback_query
+    appointment_id, time_str = query.data.split('_')[-2:]
+    appointment_id = int(appointment_id)
+    new_time = datetime.fromisoformat(time_str)
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment or str(query.from_user.id) != appointment.client_telegram_id:
+            await query.message.edit_text(
+                "Запись не найдена или у вас нет прав для её управления.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+            return
+        
+        # Обновляем время записи
+        updated = crud_appointment.update(
+            db,
+            db_obj=appointment,
+            obj_in=AppointmentUpdate(
+                appointment_time=new_time,
+                status="pending"  # Сбрасываем статус на "ожидает подтверждения"
+            )
+        )
+        
+        if updated:
+            # Отправляем уведомление администратору
+            await notify_admin_new_appointment(context.bot, updated.admin_id, updated.id)
+            
+            await query.message.edit_text(
+                f"✅ Запись успешно перенесена на {new_time.strftime('%d.%m.%Y %H:%M')}!\n"
+                f"Ожидайте подтверждения администратора.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
+        else:
+            await query.message.edit_text(
+                "Произошла ошибка при переносе записи.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К моим записям", callback_data="my_appointments")
+                ]])
+            )
     finally:
         db.close()
 

@@ -163,6 +163,18 @@ async def button_callback(update: Update, context):
         await update_appointment_service(update, context)
     elif query.data.startswith('filter_'):
         await update_filters(update, context)
+    elif query.data.startswith('manage_client_appointment_'):
+        await manage_client_appointment(update, context)
+    elif query.data.startswith('reschedule_appointment_'):
+        await start_reschedule_appointment(update, context)
+    elif query.data.startswith('reschedule_date_'):
+        await select_reschedule_date(update, context)
+    elif query.data.startswith('confirm_reschedule_'):
+        await confirm_reschedule(update, context)
+    elif query.data.startswith('client_cancel_appointment_'):
+        await client_cancel_appointment(update, context)
+    elif query.data.startswith('confirm_client_cancel_'):
+        await confirm_client_cancel(update, context)
     elif query.data == 'admin_menu':
         await admin_menu(update, context)
     elif query.data == 'view_appointments':
