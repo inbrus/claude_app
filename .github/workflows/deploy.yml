@@ -1,4 +1,4 @@
-name: Deploy to Reg.ru
+name: Deploy to Reg.ru via FTP
 
 on:
   push:
@@ -11,20 +11,16 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.5.4
+      - name: FTP Deploy
+        uses: SamKirkland/FTP-Deploy-Action@4.3.3
         with:
-          ssh-private-key: ${{ secrets.REG_RU_SSH_KEY }}
-          
-      - name: Add known hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H ${{ secrets.REG_RU_HOST }} >> ~/.ssh/known_hosts
-          
-      - name: Deploy to Reg.ru
-        run: |
-          rsync -avz --delete \
-            --exclude '.git*' \
-            --exclude 'README.md' \
-            --exclude '.env' \
-            ./ ${{ secrets.REG_RU_USERNAME }}@${{ secrets.REG_RU_HOST }}:${{ secrets.REG_RU_PATH }}
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ secrets.FTP_SERVER_DIR }}
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            README.md
+            .env
