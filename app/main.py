@@ -142,6 +142,22 @@ async def button_callback(update: Update, context):
         await edit_day(update, context)
     elif query.data.startswith('toggle_day_'):
         await toggle_day(update, context)
+    elif query.data.startswith('manage_appointment_'):
+        await manage_appointment(update, context)
+    elif query.data.startswith('confirm_appointment_') or query.data.startswith('cancel_appointment_'):
+        await update_appointment_status(update, context)
+    elif query.data.startswith('edit_appointment_time_'):
+        await edit_appointment_time(update, context)
+    elif query.data.startswith('edit_appointment_service_'):
+        await edit_appointment_service(update, context)
+    elif query.data.startswith('change_date_'):
+        await change_appointment_date(update, context)
+    elif query.data.startswith('update_time_'):
+        await update_appointment_time(update, context)
+    elif query.data.startswith('update_service_'):
+        await update_appointment_service(update, context)
+    elif query.data.startswith('filter_'):
+        await update_filters(update, context)
     elif query.data == 'admin_menu':
         await admin_menu(update, context)
     elif query.data == 'view_appointments':

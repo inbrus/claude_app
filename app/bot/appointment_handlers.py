@@ -37,17 +37,45 @@ async def view_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tomorrow = today + timedelta(days=1)
         admin_id = context.user_data.get('admin_id')
         
+        # Получаем фильтры из контекста, если они есть
+        filters = context.user_data.get('appointment_filters', {})
+        date_range = filters.get('date_range', 'today_tomorrow')  # today_tomorrow, week, month
+        status = filters.get('status', None)  # pending, confirmed, cancelled
+        
+        if date_range == 'week':
+            end_date = today + timedelta(days=7)
+        elif date_range == 'month':
+            end_date = today + timedelta(days=30)
+        else:  # today_tomorrow
+            end_date = tomorrow + timedelta(days=1)
+        
         appointments = crud_appointment.get_by_date_range(
             db,
             start_date=today,
-            end_date=tomorrow + timedelta(days=1),
-            admin_id=admin_id
+            end_date=end_date,
+            admin_id=admin_id,
+            status=status
         )
         
+        # Добавляем кнопки управления
+        keyboard = [
+            [InlineKeyboardButton("➕ Создать запись", callback_data="create_appointment")],
+            [
+                InlineKeyboardButton("📅 Сегодня-завтра", callback_data="filter_date_today_tomorrow"),
+                InlineKeyboardButton("📅 Неделя", callback_data="filter_date_week")
+            ],
+            [
+                InlineKeyboardButton("⏳ Ожидают", callback_data="filter_status_pending"),
+                InlineKeyboardButton("✅ Подтверждены", callback_data="filter_status_confirmed"),
+                InlineKeyboardButton("❌ Отменены", callback_data="filter_status_cancelled")
+            ],
+            [InlineKeyboardButton("🔄 Сбросить фильтры", callback_data="filter_reset")],
+            [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
+        ]
+        
         if not appointments:
-            keyboard = [[InlineKeyboardButton("« Назад", callback_data="admin_menu")]]
             await update.callback_query.message.edit_text(
-                "На ближайшие дни записей нет.",
+                "Записей не найдено.",
                 reply_markup=InlineKeyboardMarkup(keyboard)
             )
             return
@@ -72,10 +100,15 @@ async def view_appointments(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"Статус: {apt.status}\n\n"
                 )
         
-        keyboard = [
-            [InlineKeyboardButton("🔄 Обновить", callback_data="view_appointments")],
-            [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
-        ]
+        # Добавляем кнопки для каждой записи
+        for day, day_appointments in appointments_by_day.items():
+            for apt in day_appointments:
+                keyboard.insert(-1, [
+                    InlineKeyboardButton(
+                        f"⚙️ {format_time(apt.appointment_time)} - {apt.client_name}",
+                        callback_data=f"manage_appointment_{apt.id}"
+                    )
+                ])
         
         await update.callback_query.message.edit_text(
             text,
@@ -321,6 +354,342 @@ async def enter_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
     return CONFIRM_APPOINTMENT
+
+async def manage_appointment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Управление конкретной записью"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        text = (
+            f"Управление записью:\n\n"
+            f"Клиент: {appointment.client_name}\n"
+            f"Телефон: {appointment.client_phone}\n"
+            f"Услуга: {appointment.service.name}\n"
+            f"Дата: {format_date(appointment.appointment_time)}\n"
+            f"Время: {format_time(appointment.appointment_time)}\n"
+            f"Статус: {appointment.status}\n"
+        )
+        
+        keyboard = [
+            [InlineKeyboardButton("✏️ Изменить время", callback_data=f"edit_appointment_time_{appointment_id}")],
+            [InlineKeyboardButton("✏️ Изменить услугу", callback_data=f"edit_appointment_service_{appointment_id}")],
+            [
+                InlineKeyboardButton("✅ Подтвердить", callback_data=f"confirm_appointment_{appointment_id}"),
+                InlineKeyboardButton("❌ Отменить", callback_data=f"cancel_appointment_{appointment_id}")
+            ],
+            [InlineKeyboardButton("« К списку записей", callback_data="view_appointments")]
+        ]
+        
+        await query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    finally:
+        db.close()
+
+async def update_appointment_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновление статуса записи"""
+    query = update.callback_query
+    action, appointment_id = query.data.split('_')[-2:]
+    appointment_id = int(appointment_id)
+    new_status = "confirmed" if action == "confirm" else "cancelled"
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.update_status(
+            db,
+            appointment_id=appointment_id,
+            new_status=new_status
+        )
+        
+        if appointment:
+            status_text = "подтверждена" if new_status == "confirmed" else "отменена"
+            await query.message.edit_text(
+                f"Запись успешно {status_text}!",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+        else:
+            await query.message.edit_text(
+                "Ошибка при обновлении статуса записи.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+    finally:
+        db.close()
+
+async def edit_appointment_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало редактирования времени записи"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        # Показываем календарь на ближайшие дни
+        today = datetime.now().date()
+        keyboard = []
+        for i in range(14):
+            date = today + timedelta(days=i)
+            keyboard.append([
+                InlineKeyboardButton(
+                    format_date(date),
+                    callback_data=f"change_date_{appointment_id}_{date.isoformat()}"
+                )
+            ])
+        keyboard.append([
+            InlineKeyboardButton("« Назад", callback_data=f"manage_appointment_{appointment_id}")
+        ])
+        
+        await query.message.edit_text(
+            f"Текущее время записи: {format_date(appointment.appointment_time)} {format_time(appointment.appointment_time)}\n"
+            f"Выберите новую дату:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def change_appointment_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Выбор новой даты для записи"""
+    query = update.callback_query
+    appointment_id, date_str = query.data.split('_')[-2:]
+    appointment_id = int(appointment_id)
+    selected_date = datetime.fromisoformat(date_str)
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        # Получаем доступные слоты
+        available_slots = crud_appointment.get_available_slots(
+            db,
+            admin_id=appointment.admin_id,
+            date=selected_date,
+            service_duration=appointment.service.duration
+        )
+        
+        if not available_slots:
+            await query.message.edit_text(
+                "На эту дату нет свободных окон.\n"
+                "Пожалуйста, выберите другую дату:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К выбору даты", callback_data=f"edit_appointment_time_{appointment_id}")
+                ]])
+            )
+            return
+        
+        # Показываем доступные слоты
+        keyboard = []
+        for slot in available_slots:
+            keyboard.append([
+                InlineKeyboardButton(
+                    format_time(slot),
+                    callback_data=f"update_time_{appointment_id}_{slot.isoformat()}"
+                )
+            ])
+        keyboard.append([
+            InlineKeyboardButton("« К выбору даты", callback_data=f"edit_appointment_time_{appointment_id}")
+        ])
+        
+        await query.message.edit_text(
+            f"Выбрана дата: {format_date(selected_date)}\n"
+            f"Выберите новое время:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def update_appointment_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновление времени записи"""
+    query = update.callback_query
+    appointment_id, time_str = query.data.split('_')[-2:]
+    appointment_id = int(appointment_id)
+    new_time = datetime.fromisoformat(time_str)
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        # Обновляем время записи
+        updated = crud_appointment.update(
+            db,
+            db_obj=appointment,
+            obj_in=AppointmentUpdate(appointment_time=new_time)
+        )
+        
+        await query.message.edit_text(
+            f"✅ Время записи успешно изменено на {format_date(new_time)} {format_time(new_time)}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("« К записи", callback_data=f"manage_appointment_{appointment_id}")
+            ]])
+        )
+    finally:
+        db.close()
+
+async def edit_appointment_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Редактирование услуги"""
+    query = update.callback_query
+    appointment_id = int(query.data.split('_')[-1])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        services = crud_service.get_multi(db)
+        active_services = [s for s in services if s.is_active]
+        
+        if not active_services:
+            await query.message.edit_text(
+                "Нет доступных услуг.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К записи", callback_data=f"manage_appointment_{appointment_id}")
+                ]])
+            )
+            return
+        
+        keyboard = []
+        for service in active_services:
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"{service.name} - {service.price}₽",
+                    callback_data=f"update_service_{appointment_id}_{service.id}"
+                )
+            ])
+        keyboard.append([
+            InlineKeyboardButton("« Назад", callback_data=f"manage_appointment_{appointment_id}")
+        ])
+        
+        await query.message.edit_text(
+            f"Текущая услуга: {appointment.service.name}\n"
+            f"Выберите новую услугу:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
+
+async def update_appointment_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновление услуги в записи"""
+    query = update.callback_query
+    appointment_id, service_id = map(int, query.data.split('_')[-2:])
+    
+    db = SessionLocal()
+    try:
+        appointment = crud_appointment.get(db, id=appointment_id)
+        if not appointment:
+            await query.message.edit_text(
+                "Запись не найдена.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
+                ]])
+            )
+            return
+        
+        service = crud_service.get(db, id=service_id)
+        if not service or not service.is_active:
+            await query.message.edit_text(
+                "Услуга не найдена или неактивна.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К записи", callback_data=f"manage_appointment_{appointment_id}")
+                ]])
+            )
+            return
+        
+        # Проверяем, доступно ли текущее время для новой услуги
+        available_slots = crud_appointment.get_available_slots(
+            db,
+            admin_id=appointment.admin_id,
+            date=appointment.appointment_time,
+            service_duration=service.duration
+        )
+        
+        if appointment.appointment_time not in available_slots:
+            await query.message.edit_text(
+                "Невозможно изменить услугу: текущее время будет недоступно для новой услуги.\n"
+                "Пожалуйста, сначала измените время записи.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« К записи", callback_data=f"manage_appointment_{appointment_id}")
+                ]])
+            )
+            return
+        
+        # Обновляем услугу
+        updated = crud_appointment.update(
+            db,
+            db_obj=appointment,
+            obj_in=AppointmentUpdate(service_id=service_id)
+        )
+        
+        await query.message.edit_text(
+            f"✅ Услуга успешно изменена на {service.name}",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("« К записи", callback_data=f"manage_appointment_{appointment_id}")
+            ]])
+        )
+    finally:
+        db.close()
+
+async def update_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обновление фильтров для просмотра записей"""
+    query = update.callback_query
+    filter_type, filter_value = query.data.split('_')[1:3]
+    
+    if 'appointment_filters' not in context.user_data:
+        context.user_data['appointment_filters'] = {}
+    
+    if filter_type == 'date':
+        context.user_data['appointment_filters']['date_range'] = filter_value
+        context.user_data['appointment_filters'].pop('status', None)  # Сбрасываем фильтр статуса
+    elif filter_type == 'status':
+        context.user_data['appointment_filters']['status'] = filter_value
+        context.user_data['appointment_filters'].pop('date_range', None)  # Сбрасываем фильтр даты
+    elif filter_type == 'reset':
+        context.user_data['appointment_filters'] = {}
+    
+    await view_appointments(update, context)
 
 async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Подтверждение записи"""
