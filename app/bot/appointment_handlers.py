@@ -412,9 +412,13 @@ async def update_appointment_status(update: Update, context: ContextTypes.DEFAUL
         )
         
         if appointment:
+            # Отправляем уведомление клиенту
+            await notify_client_status_change(context.bot, appointment.id)
+            
             status_text = "подтверждена" if new_status == "confirmed" else "отменена"
             await query.message.edit_text(
-                f"Запись успешно {status_text}!",
+                f"Запись успешно {status_text}!\n"
+                f"Уведомление отправлено клиенту.",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("« К списку записей", callback_data="view_appointments")
                 ]])
@@ -720,6 +724,9 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             appointment = crud_appointment.create_with_validation(db, obj_in=appointment_in)
             
+            # Отправляем уведомление администратору
+            await notify_admin_new_appointment(context.bot, data['admin_id'], appointment.id)
+            
             await query.message.edit_text(
                 f"✅ Запись успешно создана!\n\n"
                 f"Услуга: {data['service_name']}\n"
@@ -727,7 +734,7 @@ async def confirm_booking(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Время: {format_time(data['appointment_time'])}\n"
                 f"Имя: {data['client_name']}\n"
                 f"Телефон: {data['client_phone']}\n\n"
-                f"Ждём вас!",
+                f"Ждём подтверждения от администратора!",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("« В главное меню", callback_data="start")
                 ]])

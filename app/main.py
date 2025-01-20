@@ -35,6 +35,11 @@ from app.bot.appointment_handlers import (
     SELECT_SERVICE, SELECT_DATE, SELECT_TIME,
     ENTER_NAME, ENTER_PHONE, CONFIRM_APPOINTMENT
 )
+from app.bot.notifications import (
+    notify_admin_new_appointment,
+    notify_client_status_change,
+    check_upcoming_appointments
+)
 
 # Настройка логирования
 logging.basicConfig(
@@ -282,12 +287,16 @@ async def webhook(request: Request):
 
 @app.on_event("startup")
 async def startup_event():
-    """Настройка вебхука при запуске"""
+    """Настройка вебхука и запуск фоновых задач при запуске"""
     try:
         await bot.initialize()
         webhook_url = f"{settings.WEBAPP_URL}/webhook"
         await bot.bot.set_webhook(url=webhook_url)
         logger.info(f"Webhook set to {webhook_url}")
+        
+        # Запускаем проверку предстоящих записей в фоновом режиме
+        asyncio.create_task(check_upcoming_appointments(bot.bot))
+        logger.info("Started checking upcoming appointments")
     except Exception as e:
         logger.error(f"Error during startup: {e}", exc_info=True)
         raise
