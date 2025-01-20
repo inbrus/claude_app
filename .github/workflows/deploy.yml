@@ -1,0 +1,30 @@
+name: Deploy to Reg.ru
+
+on:
+  push:
+    branches:
+      - regru_hosting
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.5.4
+        with:
+          ssh-private-key: ${{ secrets.REG_RU_SSH_KEY }}
+          
+      - name: Add known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.REG_RU_HOST }} >> ~/.ssh/known_hosts
+          
+      - name: Deploy to Reg.ru
+        run: |
+          rsync -avz --delete \
+            --exclude '.git*' \
+            --exclude 'README.md' \
+            --exclude '.env' \
+            ./ ${{ secrets.REG_RU_USERNAME }}@${{ secrets.REG_RU_HOST }}:${{ secrets.REG_RU_PATH }}
