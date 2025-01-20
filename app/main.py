@@ -28,6 +28,13 @@ from app.bot.schedule_handlers import (
     ENTER_BREAK_START, ENTER_BREAK_END,
     CONFIRM_SCHEDULE
 )
+from app.bot.appointment_handlers import (
+    view_appointments, start_booking, select_service,
+    select_date, select_time, enter_name, enter_phone,
+    confirm_booking, cancel_booking,
+    SELECT_SERVICE, SELECT_DATE, SELECT_TIME,
+    ENTER_NAME, ENTER_PHONE, CONFIRM_APPOINTMENT
+)
 
 # Настройка логирования
 logging.basicConfig(
@@ -206,12 +213,38 @@ schedule_handler = ConversationHandler(
     ]
 )
 
+# Создаем обработчик диалога записи
+booking_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(start_booking, pattern='^book_service$')],
+    states={
+        SELECT_SERVICE: [
+            CallbackQueryHandler(select_service, pattern='^select_service_\d+$')
+        ],
+        SELECT_DATE: [
+            CallbackQueryHandler(select_date, pattern='^select_date_\d{4}-\d{2}-\d{2}$')
+        ],
+        SELECT_TIME: [
+            CallbackQueryHandler(select_time, pattern='^select_time_\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$')
+        ],
+        ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_name)],
+        ENTER_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_phone)],
+        CONFIRM_APPOINTMENT: [
+            CallbackQueryHandler(confirm_booking, pattern='^confirm_booking$')
+        ]
+    },
+    fallbacks=[
+        CallbackQueryHandler(cancel_booking, pattern='^book_service$'),
+        CallbackQueryHandler(cancel_booking, pattern='^start$')
+    ]
+)
+
 # Регистрируем обработчики
 bot.add_handler(CommandHandler("start", start_command))
 bot.add_handler(CommandHandler("make_admin", make_admin_command))
 bot.add_handler(add_service_handler)
 bot.add_handler(edit_field_handler)
 bot.add_handler(schedule_handler)
+bot.add_handler(booking_handler)
 bot.add_handler(CallbackQueryHandler(button_callback))
 
 @app.post("/webhook")
