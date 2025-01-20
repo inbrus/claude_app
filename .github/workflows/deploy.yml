@@ -3,7 +3,7 @@ name: Deploy to Reg.ru via FTP
 on:
   push:
     branches:
-      - regru_hosting_new
+      - regru_hosting
 
 jobs:
   deploy:
