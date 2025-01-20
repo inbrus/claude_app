@@ -10,6 +10,14 @@ class Admin(BaseModel):
     username = Column(String(100))
     is_active = Column(Boolean, default=True)
 
+class ServiceCategory(BaseModel):
+    __tablename__ = "service_categories"
+    
+    name = Column(String(100), nullable=False)
+    description = Column(String(500), nullable=True)
+    order = Column(Integer, default=0)  # для сортировки
+    is_active = Column(Boolean, default=True)
+
 class Service(BaseModel):
     __tablename__ = "services"
     
@@ -17,6 +25,8 @@ class Service(BaseModel):
     description = Column(String(500), nullable=True)
     price = Column(Float)
     duration = Column(Integer)  # длительность в минутах
+    category_id = Column(Integer, ForeignKey("service_categories.id"), nullable=True)
+    order = Column(Integer, default=0)  # для сортировки внутри категории
     is_active = Column(Boolean, default=True)
 
 class Schedule(BaseModel):

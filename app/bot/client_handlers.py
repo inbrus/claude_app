@@ -8,26 +8,137 @@ from app.db.session import SessionLocal
 
 async def select_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Выбор услуги для записи"""
+    query = update.callback_query
     db = SessionLocal()
     try:
-        services = crud_service.get_active(db)
-        keyboard = []
-        for service in services:
-            keyboard.append([
-                InlineKeyboardButton(
-                    f"{service.name} - {service.price}₽",
-                    callback_data=f"select_service_{service.id}"
-                )
-            ])
-        keyboard.append([InlineKeyboardButton("« Отмена", callback_data="client_menu")])
+        # Получаем фильтры из контекста
+        filters = context.user_data.get('service_filters', {})
+        category_id = filters.get('category_id')
+        search_query = filters.get('search_query')
         
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.callback_query.message.edit_text(
-            "Выберите услугу:",
-            reply_markup=reply_markup
+        if search_query:
+            # Поиск услуг
+            services = crud_service.search(
+                db,
+                query=search_query,
+                category_id=category_id
+            )
+            text = f"🔍 Результаты поиска по запросу '{search_query}':"
+        else:
+            # Получаем услуги с категориями
+            result = crud_service.get_services_with_categories(db)
+            categories = result.categories
+            services = result.services
+            
+            if category_id:
+                services = [s for s in services if s.category_id == category_id]
+                category = next((c for c in categories if c.id == category_id), None)
+                text = f"Услуги в категории '{category.name}':"
+            else:
+                text = "Выберите услугу:"
+        
+        # Формируем клавиатуру
+        keyboard = []
+        
+        # Добавляем поиск
+        keyboard.append([
+            InlineKeyboardButton("🔍 Поиск", callback_data="search_services")
+        ])
+        
+        # Добавляем категории, если нет поиска
+        if not search_query:
+            keyboard.append([
+                InlineKeyboardButton("📋 Все услуги", callback_data="select_service")
+            ])
+            for category in categories:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"📁 {category.name}",
+                        callback_data=f"filter_category_{category.id}"
+                    )
+                ])
+            keyboard.append([InlineKeyboardButton("➖" * 10, callback_data="noop")])
+        
+        # Добавляем услуги
+        if services:
+            for service in services:
+                category_name = service.category.name if service.category else "Без категории"
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{category_name} | {service.name} - {service.price}₽",
+                        callback_data=f"select_service_{service.id}"
+                    )
+                ])
+        else:
+            text += "\n\nУслуги не найдены."
+        
+        # Добавляем навигацию
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="client_menu")])
+        
+        # Если есть активные фильтры, добавляем кнопку сброса
+        if category_id or search_query:
+            keyboard.append([
+                InlineKeyboardButton("🔄 Сбросить фильтры", callback_data="reset_service_filters")
+            ])
+        
+        await query.message.edit_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
     finally:
         db.close()
+
+async def start_service_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Начало поиска услуг"""
+    await update.callback_query.message.edit_text(
+        "Введите название услуги или ключевые слова для поиска:",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("« Отмена", callback_data="select_service")
+        ]])
+    )
+    return "waiting_search_query"
+
+async def process_service_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обработка поискового запроса"""
+    search_query = update.message.text
+    
+    if len(search_query) < 3:
+        await update.message.reply_text(
+            "Пожалуйста, введите не менее 3 символов для поиска:",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("« Отмена", callback_data="select_service")
+            ]])
+        )
+        return "waiting_search_query"
+    
+    # Сохраняем поисковый запрос в фильтрах
+    if 'service_filters' not in context.user_data:
+        context.user_data['service_filters'] = {}
+    context.user_data['service_filters']['search_query'] = search_query
+    
+    # Показываем результаты
+    await select_service(update, context)
+    return ConversationHandler.END
+
+async def filter_services_by_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Фильтрация услуг по категории"""
+    query = update.callback_query
+    category_id = int(query.data.split('_')[-1])
+    
+    # Сохраняем фильтр по категории
+    if 'service_filters' not in context.user_data:
+        context.user_data['service_filters'] = {}
+    context.user_data['service_filters']['category_id'] = category_id
+    
+    # Сбрасываем поисковый запрос при выборе категории
+    context.user_data['service_filters'].pop('search_query', None)
+    
+    await select_service(update, context)
+
+async def reset_service_filters(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сброс всех фильтров услуг"""
+    context.user_data['service_filters'] = {}
+    await select_service(update, context)
 
 async def select_date(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Выбор даты для записи"""

@@ -175,6 +175,12 @@ async def button_callback(update: Update, context):
         await client_cancel_appointment(update, context)
     elif query.data.startswith('confirm_client_cancel_'):
         await confirm_client_cancel(update, context)
+    elif query.data == 'search_services':
+        await start_service_search(update, context)
+    elif query.data.startswith('filter_category_'):
+        await filter_services_by_category(update, context)
+    elif query.data == 'reset_service_filters':
+        await reset_service_filters(update, context)
     elif query.data == 'admin_menu':
         await admin_menu(update, context)
     elif query.data == 'view_appointments':
@@ -246,6 +252,15 @@ schedule_handler = ConversationHandler(
     ]
 )
 
+# Создаем обработчик диалога поиска услуг
+search_handler = ConversationHandler(
+    entry_points=[CallbackQueryHandler(start_service_search, pattern='^search_services$')],
+    states={
+        "waiting_search_query": [MessageHandler(filters.TEXT & ~filters.COMMAND, process_service_search)]
+    },
+    fallbacks=[CallbackQueryHandler(select_service, pattern='^select_service$')]
+)
+
 # Создаем обработчик диалога записи
 booking_handler = ConversationHandler(
     entry_points=[CallbackQueryHandler(start_booking, pattern='^book_service$')],
@@ -277,6 +292,7 @@ bot.add_handler(CommandHandler("make_admin", make_admin_command))
 bot.add_handler(add_service_handler)
 bot.add_handler(edit_field_handler)
 bot.add_handler(schedule_handler)
+bot.add_handler(search_handler)
 bot.add_handler(booking_handler)
 bot.add_handler(CallbackQueryHandler(button_callback))
 
