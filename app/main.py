@@ -120,56 +120,6 @@ async def make_admin_command(update: Update, context):
     finally:
         db.close()
 
-async def button_callback(update: Update, context):
-    """Обработка нажатий на кнопки"""
-    query = update.callback_query
-    
-    if query.data == 'select_service':
-        await select_service(update, context)
-    elif query.data.startswith('select_service_'):
-        await select_date(update, context)
-    elif query.data.startswith('select_date_'):
-        await select_time(update, context)
-    elif query.data == 'my_appointments':
-        await my_appointments(update, context)
-    elif query.data == 'manage_schedule':
-        await manage_schedule(update, context)
-    elif query.data.startswith('edit_day_'):
-        await edit_day(update, context)
-    elif query.data.startswith('toggle_day_'):
-        await toggle_day(update, context)
-    elif query.data.startswith('manage_client_appointment_'):
-        await manage_client_appointment(update, context)
-    elif query.data.startswith('reschedule_appointment_'):
-        await start_reschedule_appointment(update, context)
-    elif query.data.startswith('reschedule_date_'):
-        await select_reschedule_date(update, context)
-    elif query.data.startswith('confirm_reschedule_'):
-        await confirm_reschedule(update, context)
-    elif query.data.startswith('client_cancel_appointment_'):
-        await client_cancel_appointment(update, context)
-    elif query.data.startswith('confirm_client_cancel_'):
-        await confirm_client_cancel(update, context)
-    elif query.data == 'admin_menu':
-        await admin_menu(update, context)
-    elif query.data == 'view_appointments':
-        await view_appointments(update, context)
-    elif query.data == 'manage_services':
-        await manage_services(update, context)
-    elif query.data.startswith('edit_service_'):
-        await edit_service(update, context)
-    elif query.data.startswith('toggle_service_'):
-        await toggle_service(update, context)
-    elif query.data.startswith('delete_service_'):
-        await delete_service(update, context)
-    elif query.data.startswith('confirm_delete_'):
-        await confirm_delete_service(update, context)
-    elif query.data == 'client_menu':
-        await client_menu(update, context)
-    elif query.data.startswith('filter_category_'):
-        await filter_services_by_category(update, context)
-    elif query.data == 'reset_service_filters':
-        await reset_service_filters(update, context)
 
 # Создаем обработчик диалога добавления услуги
 add_service_handler = ConversationHandler(
@@ -236,6 +186,73 @@ bot.add_handler(edit_field_handler)
 bot.add_handler(schedule_handler)
 bot.add_handler(search_handler)
 bot.add_handler(CallbackQueryHandler(button_callback))
+
+async def button_callback(update: Update, context):
+    """Обработка нажатий на кнопки"""
+    query = update.callback_query
+    
+    if query.data == 'select_service':
+        await select_service(update, context)
+    elif query.data.startswith('select_service_'):
+        await select_date(update, context)
+    elif query.data.startswith('select_date_'):
+        await select_time(update, context)
+    elif query.data == 'my_appointments':
+        await my_appointments(update, context)
+    elif query.data == 'manage_schedule':
+        await manage_schedule(update, context)
+    elif query.data.startswith('edit_day_'):
+        await edit_day(update, context)
+    elif query.data.startswith('toggle_day_'):
+        await toggle_day(update, context)
+    elif query.data.startswith('manage_client_appointment_'):
+        await manage_client_appointment(update, context)
+    elif query.data.startswith('confirm_appointment_') or query.data.startswith('cancel_appointment_'):
+        await update_appointment_status(update, context)
+    elif query.data.startswith('edit_appointment_time_'):
+        await edit_appointment_time(update, context)
+    elif query.data.startswith('edit_appointment_service_'):
+        await edit_appointment_service(update, context)
+    elif query.data.startswith('change_date_'):
+        await change_appointment_date(update, context)
+    elif query.data.startswith('update_time_'):
+        await update_appointment_time(update, context)
+    elif query.data.startswith('update_service_'):
+        await update_appointment_service(update, context)
+    elif query.data.startswith('filter_'):
+        await update_filters(update, context)
+    elif query.data.startswith('manage_appointment_'):
+        await manage_appointment(update, context)
+    elif query.data.startswith('reschedule_appointment_'):
+        await start_reschedule_appointment(update, context)
+    elif query.data.startswith('reschedule_date_'):
+        await select_reschedule_date(update, context)
+    elif query.data.startswith('confirm_reschedule_'):
+        await confirm_reschedule(update, context)
+    elif query.data.startswith('client_cancel_appointment_'):
+        await client_cancel_appointment(update, context)
+    elif query.data.startswith('confirm_client_cancel_'):
+        await confirm_client_cancel(update, context)
+    elif query.data == 'admin_menu':
+        await admin_menu(update, context)
+    elif query.data == 'view_appointments':
+        await view_appointments(update, context)
+    elif query.data == 'manage_services':
+        await manage_services(update, context)
+    elif query.data.startswith('edit_service_'):
+        await edit_service(update, context)
+    elif query.data.startswith('toggle_service_'):
+        await toggle_service(update, context)
+    elif query.data.startswith('delete_service_'):
+        await delete_service(update, context)
+    elif query.data.startswith('confirm_delete_'):
+        await confirm_delete_service(update, context)
+    elif query.data == 'client_menu':
+        await client_menu(update, context)
+    elif query.data.startswith('filter_category_'):
+        await filter_services_by_category(update, context)
+    elif query.data == 'reset_service_filters':
+        await reset_service_filters(update, context)
 
 @app.post("/webhook")
 async def webhook(request: Request):
