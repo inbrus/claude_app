@@ -18,11 +18,7 @@ from app.bot.admin_handlers import (
     confirm_service, edit_service, toggle_service, delete_service,
     confirm_delete_service, start_edit_field, process_edit_field,
     ENTER_SERVICE_NAME, ENTER_SERVICE_DESCRIPTION, ENTER_SERVICE_PRICE,
-    ENTER_SERVICE_DURATION, CONFIRM_SERVICE, EDIT_SERVICE_FIELD,
-    update_appointment_status, edit_appointment_time,
-    edit_appointment_service, change_appointment_date,
-    update_appointment_time, update_appointment_service,
-    update_filters, manage_appointment
+    ENTER_SERVICE_DURATION, CONFIRM_SERVICE, EDIT_SERVICE_FIELD
 )
 from app.bot.schedule_handlers import (
     manage_schedule, edit_day, start_set_working,
@@ -144,22 +140,6 @@ async def button_callback(update: Update, context):
         await toggle_day(update, context)
     elif query.data.startswith('manage_client_appointment_'):
         await manage_client_appointment(update, context)
-    elif query.data.startswith('confirm_appointment_') or query.data.startswith('cancel_appointment_'):
-        await update_appointment_status(update, context)
-    elif query.data.startswith('edit_appointment_time_'):
-        await edit_appointment_time(update, context)
-    elif query.data.startswith('edit_appointment_service_'):
-        await edit_appointment_service(update, context)
-    elif query.data.startswith('change_date_'):
-        await change_appointment_date(update, context)
-    elif query.data.startswith('update_time_'):
-        await update_appointment_time(update, context)
-    elif query.data.startswith('update_service_'):
-        await update_appointment_service(update, context)
-    elif query.data.startswith('filter_'):
-        await update_filters(update, context)
-    elif query.data.startswith('manage_appointment_'):
-        await manage_appointment(update, context)
     elif query.data.startswith('reschedule_appointment_'):
         await start_reschedule_appointment(update, context)
     elif query.data.startswith('reschedule_date_'):
