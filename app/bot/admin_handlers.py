@@ -25,24 +25,32 @@ async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = SessionLocal()
     try:
         services = crud_service.get_multi(db)
-        keyboard = []
+        
+        text = "Управление услугами:\n\n"
+        if services:
+            for service in services:
+                status = "✅" if service.is_active else "❌"
+                text += f"{status} {service.name} - {service.price}₽\n"
+        else:
+            text += "Услуги не добавлены."
+        
+        keyboard = [
+            [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
+            [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
+        ]
+        
+        # Добавляем кнопки для каждой услуги
         for service in services:
-            status = "✅" if service.is_active else "❌"
-            keyboard.append([
+            keyboard.insert(-1, [
                 InlineKeyboardButton(
-                    f"{status} {service.name} - {service.price}₽",
+                    f"⚙️ {service.name}",
                     callback_data=f"edit_service_{service.id}"
                 )
             ])
-        keyboard.append([InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")])
-        keyboard.append([InlineKeyboardButton("« Назад", callback_data="admin_menu")])
         
-        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.callback_query.message.edit_text(
-            "Управление услугами:\n"
-            "✅ - услуга активна, ❌ - услуга отключена\n"
-            "Нажмите на услугу для редактирования.",
-            reply_markup=reply_markup
+            text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
     finally:
         db.close()
