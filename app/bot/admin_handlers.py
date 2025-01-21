@@ -499,20 +499,22 @@ async def confirm_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Главное меню администратора"""
+    """Админ панель"""
     keyboard = [
-        [InlineKeyboardButton("Управление услугами", callback_data="manage_services")],
-        [InlineKeyboardButton("Просмотр записей", callback_data="view_appointments")]
+        [InlineKeyboardButton("📋 Управление услугами", callback_data="manage_services")],
+        [InlineKeyboardButton("📅 Управление расписанием", callback_data="manage_schedule")],
+        [InlineKeyboardButton("👥 Просмотр записей", callback_data="view_appointments")],
+        [InlineKeyboardButton("« Назад", callback_data="start")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if update.callback_query:
         await update.callback_query.message.edit_text(
-            "Меню администратора:",
+            "Панель администратора:",
             reply_markup=reply_markup
         )
     else:
         await update.message.reply_text(
-            "Меню администратора:",
+            "Панель администратора:",
             reply_markup=reply_markup
         )
