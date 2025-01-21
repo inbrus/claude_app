@@ -8,6 +8,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 def format_date(date: datetime) -> str:
     """Форматирование даты"""
     return date.strftime("%d.%m.%Y")
@@ -27,6 +29,41 @@ async def send_notification(bot, chat_id: str, text: str, reply_markup=None):
         )
     except Exception as e:
         logger.error(f"Error sending notification to {chat_id}: {e}")
+
+async def notify_admin_appointment_cancelled(bot, admin_id: int, appointment_id: int):
+    """Уведомление администратора об отмене записи"""
+    db = SessionLocal()
+    try:
+        admin = crud_admin.get(db, id=admin_id)
+        appointment = crud_appointment.get(db, id=appointment_id)
+        
+        if not admin or not appointment:
+            return
+        
+        text = (
+            "❌ <b>Запись отменена клиентом!</b>\n\n"
+            f"Клиент: {appointment.client_name}\n"
+            f"Телефон: {appointment.client_phone}\n"
+            f"Услуга: {appointment.service.name}\n"
+            f"Дата: {format_date(appointment.appointment_time)}\n"
+            f"Время: {format_time(appointment.appointment_time)}"
+        )
+        
+        keyboard = [[
+            InlineKeyboardButton(
+                "⚙️ Управление записью",
+                callback_data=f"manage_appointment_{appointment_id}"
+            )
+        ]]
+        
+        await send_notification(
+            bot,
+            chat_id=admin.telegram_id,
+            text=text,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    finally:
+        db.close()
 
 async def notify_admin_new_appointment(bot, admin_id: int, appointment_id: int):
     """Уведомление администратора о новой записи"""
