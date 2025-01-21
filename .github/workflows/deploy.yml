@@ -1,9 +1,9 @@
-name: Deploy to Reg.ru via FTP
+name: Deploy to Production
 
 on:
   push:
     branches:
-      - regru_hosting
+      - prod
 
 jobs:
   deploy:
@@ -11,16 +11,36 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: FTP Deploy
-        uses: SamKirkland/FTP-Deploy-Action@4.3.3
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
-          server-dir: ${{ secrets.FTP_SERVER_DIR }}
-          exclude: |
-            **/.git*
-            **/.git*/**
-            **/node_modules/**
-            README.md
-            .env
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: unnecessary
+          if_key_exists: replace
+      
+      - name: Adding Known Hosts
+        run: ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+      
+      - name: Deploy with rsync
+        run: |
+          rsync -avz --delete \
+            --exclude='.git*' \
+            --exclude='venv' \
+            --exclude='__pycache__' \
+            --exclude='.env' \
+            --exclude='*.pyc' \
+            ./ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/u2977056/data/www/bookingfortomorrow.ru/claude_app/
+      
+      - name: Execute deployment commands
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /var/www/u2977056/data/www/bookingfortomorrow.ru/claude_app
+            source venv/bin/activate
+            pip install -r requirements.txt
+            pkill -f "python -m app.main" || true
+            nohup python -m app.main > bot.log 2>&1 &
