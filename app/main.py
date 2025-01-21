@@ -28,15 +28,17 @@ from app.bot.schedule_handlers import (
     ENTER_BREAK_START, ENTER_BREAK_END,
     CONFIRM_SCHEDULE
 )
-from app.bot.appointment_handlers import (
-    view_appointments, start_booking, select_service,
-    select_date, select_time, enter_name, enter_phone,
-    confirm_booking, cancel_booking,
-    SELECT_SERVICE, SELECT_DATE, SELECT_TIME,
-    ENTER_NAME, ENTER_PHONE, CONFIRM_APPOINTMENT
+from app.bot.client_handlers import (
+    select_service, select_date, select_time, client_menu,
+    my_appointments, manage_client_appointment,
+    client_cancel_appointment, confirm_client_cancel,
+    start_reschedule_appointment, select_reschedule_date,
+    confirm_reschedule, start_service_search, process_service_search,
+    filter_services_by_category, reset_service_filters
 )
 from app.bot.notifications import (
     notify_admin_new_appointment,
+    notify_admin_appointment_cancelled,
     notify_client_status_change,
     check_upcoming_appointments
 )
@@ -48,12 +50,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title=settings.PROJECT_NAME,
-    openapi_url="/api/v1/openapi.json",
-    docs_url="/api/docs"
-)
+# Создание FastAPI приложения
+app = FastAPI(title=settings.PROJECT_NAME)
 
+# Настройка CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,141 +62,62 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Создаем экземпляр бота
+# Создание бота
 bot = Application.builder().token(settings.TELEGRAM_BOT_TOKEN).build()
 
 async def start_command(update: Update, context):
-    """Обработчик команды /start"""
+    """Обработка команды /start"""
+    keyboard = [
+        [InlineKeyboardButton("Записаться", callback_data="select_service")],
+        [InlineKeyboardButton("Мои записи", callback_data="my_appointments")]
+    ]
+    
+    # Проверяем, является ли пользователь администратором
     db = SessionLocal()
     try:
-        user_id = update.message.from_user.id
-        admin = await crud_admin.get_by_telegram_id(db, str(user_id))
-        
-        if admin:
-            # Если пользователь админ
-            keyboard = [
-                [InlineKeyboardButton("Управление услугами", callback_data='manage_services')],
-                [InlineKeyboardButton("Управление расписанием", callback_data='manage_schedule')]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                "Добро пожаловать в панель администратора!\n"
-                "Выберите действие:",
-                reply_markup=reply_markup
-            )
-        else:
-            # Если обычный пользователь
-            keyboard = [
-                [InlineKeyboardButton("Записаться", callback_data='book_service')],
-                [InlineKeyboardButton("Мои записи", callback_data='my_appointments')]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                "Добро пожаловать! Я помогу вам записаться на услуги.\n"
-                "Выберите действие:",
-                reply_markup=reply_markup
-            )
-    except Exception as e:
-        logger.error(f"Error in start command: {e}", exc_info=True)
-        await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
+        admin = crud_admin.get_by_telegram_id(db, str(update.effective_user.id))
+        if admin and admin.is_active:
+            keyboard.append([InlineKeyboardButton("Админ панель", callback_data="admin_menu")])
+            context.user_data['admin_id'] = admin.id
     finally:
         db.close()
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Добро пожаловать! Выберите действие:",
+        reply_markup=reply_markup
+    )
 
 async def make_admin_command(update: Update, context):
-    """Обработчик команды /make_admin"""
+    """Обработка команды /make_admin"""
     db = SessionLocal()
     try:
-        user_id = update.message.from_user.id
-        admin = await crud_admin.get_by_telegram_id(db, str(user_id))
+        # Проверяем, существует ли уже администратор
+        existing_admin = crud_admin.get_first(db)
+        if existing_admin:
+            await update.message.reply_text(
+                "Администратор уже существует. Команда недоступна."
+            )
+            return
+        
+        # Создаем нового администратора
+        admin = crud_admin.create_admin(
+            db,
+            telegram_id=str(update.effective_user.id),
+            username=update.effective_user.username or "Unknown"
+        )
         
         if admin:
-            await update.message.reply_text("Вы уже являетесь администратором.")
-        else:
-            new_admin = await crud_admin.create(
-                db,
-                telegram_id=str(user_id),
-                username=update.message.from_user.username or "Unknown"
+            context.user_data['admin_id'] = admin.id
+            await update.message.reply_text(
+                "Вы успешно назначены администратором!"
             )
-            if new_admin:
-                await update.message.reply_text(
-                    "Вы успешно назначены администратором!\n"
-                    "Используйте /start для доступа к панели управления."
-                )
-            else:
-                await update.message.reply_text("Произошла ошибка при назначении администратором.")
-    except Exception as e:
-        logger.error(f"Error in make_admin command: {e}", exc_info=True)
-        await update.message.reply_text("Произошла ошибка. Попробуйте позже.")
+        else:
+            await update.message.reply_text(
+                "Произошла ошибка при назначении администратором."
+            )
     finally:
         db.close()
-
-async def button_callback(update: Update, context):
-    """Обработчик нажатий на кнопки"""
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'book_service':
-        await query.message.reply_text("Выберите услугу для записи:")
-    elif query.data == 'my_appointments':
-        await query.message.reply_text("Ваши записи:")
-    elif query.data == 'manage_services':
-        await manage_services(update, context)
-    elif query.data == 'manage_schedule':
-        await manage_schedule(update, context)
-    elif query.data.startswith('edit_day_'):
-        await edit_day(update, context)
-    elif query.data.startswith('toggle_day_'):
-        await toggle_day(update, context)
-    elif query.data.startswith('manage_appointment_'):
-        await manage_appointment(update, context)
-    elif query.data.startswith('confirm_appointment_') or query.data.startswith('cancel_appointment_'):
-        await update_appointment_status(update, context)
-    elif query.data.startswith('edit_appointment_time_'):
-        await edit_appointment_time(update, context)
-    elif query.data.startswith('edit_appointment_service_'):
-        await edit_appointment_service(update, context)
-    elif query.data.startswith('change_date_'):
-        await change_appointment_date(update, context)
-    elif query.data.startswith('update_time_'):
-        await update_appointment_time(update, context)
-    elif query.data.startswith('update_service_'):
-        await update_appointment_service(update, context)
-    elif query.data.startswith('filter_'):
-        await update_filters(update, context)
-    elif query.data.startswith('manage_client_appointment_'):
-        await manage_client_appointment(update, context)
-    elif query.data.startswith('reschedule_appointment_'):
-        await start_reschedule_appointment(update, context)
-    elif query.data.startswith('reschedule_date_'):
-        await select_reschedule_date(update, context)
-    elif query.data.startswith('confirm_reschedule_'):
-        await confirm_reschedule(update, context)
-    elif query.data.startswith('client_cancel_appointment_'):
-        await client_cancel_appointment(update, context)
-    elif query.data.startswith('confirm_client_cancel_'):
-        await confirm_client_cancel(update, context)
-    elif query.data == 'search_services':
-        await start_service_search(update, context)
-    elif query.data.startswith('filter_category_'):
-        await filter_services_by_category(update, context)
-    elif query.data == 'reset_service_filters':
-        await reset_service_filters(update, context)
-    elif query.data == 'admin_menu':
-        await admin_menu(update, context)
-    elif query.data == 'view_appointments':
-        await view_appointments(update, context)
-    elif query.data == 'add_service':
-        await start_add_service(update, context)
-    elif query.data.startswith('edit_service_'):
-        await edit_service(update, context)
-    elif query.data.startswith('toggle_service_'):
-        await toggle_service(update, context)
-    elif query.data.startswith('delete_service_'):
-        await delete_service(update, context)
-    elif query.data.startswith('confirm_delete_'):
-        await confirm_delete_service(update, context)
-    elif any(query.data.startswith(f'edit_{field}_') for field in ['name', 'description', 'price', 'duration']):
-        await start_edit_field(update, context)
 
 # Создаем обработчик диалога добавления услуги
 add_service_handler = ConversationHandler(
@@ -205,31 +126,25 @@ add_service_handler = ConversationHandler(
         ENTER_SERVICE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_service_name)],
         ENTER_SERVICE_DESCRIPTION: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, enter_service_description),
-            CommandHandler('skip', skip_description)
+            CallbackQueryHandler(skip_description, pattern='^skip$')
         ],
         ENTER_SERVICE_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_service_price)],
         ENTER_SERVICE_DURATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_service_duration)],
         CONFIRM_SERVICE: [CallbackQueryHandler(confirm_service, pattern='^confirm_service$')]
     },
-    fallbacks=[CallbackQueryHandler(manage_services, pattern='^manage_services$')]
+    fallbacks=[
+        CallbackQueryHandler(manage_services, pattern='^manage_services$')
+    ]
 )
 
-# Создаем обработчик диалога редактирования полей услуги
+# Создаем обработчик диалога редактирования услуги
 edit_field_handler = ConversationHandler(
-    entry_points=[
-        CallbackQueryHandler(
-            start_edit_field,
-            pattern='^edit_(name|description|price|duration)_\d+$'
-        )
-    ],
+    entry_points=[CallbackQueryHandler(start_edit_field, pattern='^edit_field_\d+_\w+$')],
     states={
         EDIT_SERVICE_FIELD: [MessageHandler(filters.TEXT & ~filters.COMMAND, process_edit_field)]
     },
     fallbacks=[
-        CallbackQueryHandler(
-            edit_service,
-            pattern='^edit_service_\d+$'
-        )
+        CallbackQueryHandler(edit_service, pattern='^edit_service_\d+$')
     ]
 )
 
@@ -261,31 +176,6 @@ search_handler = ConversationHandler(
     fallbacks=[CallbackQueryHandler(select_service, pattern='^select_service$')]
 )
 
-# Создаем обработчик диалога записи
-booking_handler = ConversationHandler(
-    entry_points=[CallbackQueryHandler(start_booking, pattern='^book_service$')],
-    states={
-        SELECT_SERVICE: [
-            CallbackQueryHandler(select_service, pattern='^select_service_\d+$')
-        ],
-        SELECT_DATE: [
-            CallbackQueryHandler(select_date, pattern='^select_date_\d{4}-\d{2}-\d{2}$')
-        ],
-        SELECT_TIME: [
-            CallbackQueryHandler(select_time, pattern='^select_time_\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$')
-        ],
-        ENTER_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_name)],
-        ENTER_PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_phone)],
-        CONFIRM_APPOINTMENT: [
-            CallbackQueryHandler(confirm_booking, pattern='^confirm_booking$')
-        ]
-    },
-    fallbacks=[
-        CallbackQueryHandler(cancel_booking, pattern='^book_service$'),
-        CallbackQueryHandler(cancel_booking, pattern='^start$')
-    ]
-)
-
 # Регистрируем обработчики
 bot.add_handler(CommandHandler("start", start_command))
 bot.add_handler(CommandHandler("make_admin", make_admin_command))
@@ -293,19 +183,80 @@ bot.add_handler(add_service_handler)
 bot.add_handler(edit_field_handler)
 bot.add_handler(schedule_handler)
 bot.add_handler(search_handler)
-bot.add_handler(booking_handler)
 bot.add_handler(CallbackQueryHandler(button_callback))
+
+async def button_callback(update: Update, context):
+    """Обработка нажатий на кнопки"""
+    query = update.callback_query
+    
+    if query.data == 'select_service':
+        await select_service(update, context)
+    elif query.data.startswith('select_service_'):
+        await select_date(update, context)
+    elif query.data.startswith('select_date_'):
+        await select_time(update, context)
+    elif query.data == 'my_appointments':
+        await my_appointments(update, context)
+    elif query.data == 'manage_schedule':
+        await manage_schedule(update, context)
+    elif query.data.startswith('edit_day_'):
+        await edit_day(update, context)
+    elif query.data.startswith('toggle_day_'):
+        await toggle_day(update, context)
+    elif query.data.startswith('manage_client_appointment_'):
+        await manage_client_appointment(update, context)
+    elif query.data.startswith('confirm_appointment_') or query.data.startswith('cancel_appointment_'):
+        await update_appointment_status(update, context)
+    elif query.data.startswith('edit_appointment_time_'):
+        await edit_appointment_time(update, context)
+    elif query.data.startswith('edit_appointment_service_'):
+        await edit_appointment_service(update, context)
+    elif query.data.startswith('change_date_'):
+        await change_appointment_date(update, context)
+    elif query.data.startswith('update_time_'):
+        await update_appointment_time(update, context)
+    elif query.data.startswith('update_service_'):
+        await update_appointment_service(update, context)
+    elif query.data.startswith('filter_'):
+        await update_filters(update, context)
+    elif query.data.startswith('manage_appointment_'):
+        await manage_appointment(update, context)
+    elif query.data.startswith('reschedule_appointment_'):
+        await start_reschedule_appointment(update, context)
+    elif query.data.startswith('reschedule_date_'):
+        await select_reschedule_date(update, context)
+    elif query.data.startswith('confirm_reschedule_'):
+        await confirm_reschedule(update, context)
+    elif query.data.startswith('client_cancel_appointment_'):
+        await client_cancel_appointment(update, context)
+    elif query.data.startswith('confirm_client_cancel_'):
+        await confirm_client_cancel(update, context)
+    elif query.data == 'admin_menu':
+        await admin_menu(update, context)
+    elif query.data == 'view_appointments':
+        await view_appointments(update, context)
+    elif query.data == 'manage_services':
+        await manage_services(update, context)
+    elif query.data.startswith('edit_service_'):
+        await edit_service(update, context)
+    elif query.data.startswith('toggle_service_'):
+        await toggle_service(update, context)
+    elif query.data.startswith('delete_service_'):
+        await delete_service(update, context)
+    elif query.data.startswith('confirm_delete_'):
+        await confirm_delete_service(update, context)
+    elif query.data == 'client_menu':
+        await client_menu(update, context)
+    elif query.data.startswith('filter_category_'):
+        await filter_services_by_category(update, context)
+    elif query.data == 'reset_service_filters':
+        await reset_service_filters(update, context)
 
 @app.post("/webhook")
 async def webhook(request: Request):
     """Обработка вебхуков от Telegram"""
     try:
         data = await request.json()
-        logger.info(f"Received webhook data: {data}")
-        
-        if not bot.running:
-            await bot.initialize()
-        
         update = Update.de_json(data, bot.bot)
         await bot.process_update(update)
         return {"ok": True}
@@ -332,9 +283,8 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Очистка при выключении"""
-    if bot.running:
+    try:
         await bot.shutdown()
-
-@app.get("/")
-async def root():
-    return {"message": "Telegram Booking Mini App API"}
+    except Exception as e:
+        logger.error(f"Error during shutdown: {e}", exc_info=True)
+        raise
