@@ -6,6 +6,7 @@ from app.crud.crud_service import crud_service
 from app.crud.crud_appointment import crud_appointment
 from app.schemas.service import ServiceCreate, ServiceUpdate
 from app.db.session import SessionLocal
+from app.bot.notifications import notify_admin_new_appointment
 
 # Состояния диалога
 (

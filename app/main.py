@@ -253,6 +253,14 @@ async def button_callback(update: Update, context):
         await filter_services_by_category(update, context)
     elif query.data == 'reset_service_filters':
         await reset_service_filters(update, context)
+    elif query.data.startswith('edit_name_'):
+        await start_edit_field(update, context)
+    elif query.data.startswith('edit_description_'):
+        await start_edit_field(update, context)
+    elif query.data.startswith('edit_price_'):
+        await start_edit_field(update, context)
+    elif query.data.startswith('edit_duration_'):
+        await start_edit_field(update, context)
 
 @app.post("/webhook")
 async def webhook(request: Request):
