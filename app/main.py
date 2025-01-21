@@ -8,6 +8,7 @@ from telegram.ext import (
 )
 import logging
 import re
+import asyncio
 from app.crud.crud_admin import crud_admin
 from app.db.session import SessionLocal
 from app.bot.admin_handlers import (
@@ -118,6 +119,7 @@ async def make_admin_command(update: Update, context):
             )
     finally:
         db.close()
+
 
 # Создаем обработчик диалога добавления услуги
 add_service_handler = ConversationHandler(
