@@ -101,7 +101,7 @@ async def make_admin_command(update: Update, context):
     db = SessionLocal()
     try:
         # Проверяем, существует ли уже администратор
-        existing_admin = crud_admin.get_first(db)
+        existing_admin = await crud_admin.get_first(db)
         if existing_admin:
             await update.message.reply_text(
                 "Администратор уже существует. Команда недоступна."
