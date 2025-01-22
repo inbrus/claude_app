@@ -26,12 +26,54 @@ service_data = {}
 
 async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление услугами"""
-    print("manage_services called")
-    logger.info("manage_services called")
-    
-    if not update.callback_query:
-        print("No callback query")
-        return
+    debug_file = "debug.log"
+    with open(debug_file, "a") as f:
+        f.write("\n=== manage_services called ===\n")
+        
+        if not update.callback_query:
+            f.write("No callback query\n")
+            return
+            
+        f.write("Getting services from database\n")
+        db = SessionLocal()
+        try:
+            services = crud_service.get_multi(db)
+            f.write(f"Got services: {services}\n")
+            
+            text = "Управление услугами:\n\n"
+            if services:
+                for service in services:
+                    f.write(f"Processing service: {service.name}\n")
+                    status = "✅" if service.is_active else "❌"
+                    text += f"{status} {service.name} - {service.price}₽\n"
+            else:
+                text += "Услуги не добавлены."
+                f.write("No services found\n")
+            
+            keyboard = [
+                [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
+                [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
+            ]
+            
+            f.write(f"Final text: {text}\n")
+            f.write(f"Keyboard: {keyboard}\n")
+            
+            await update.callback_query.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            f.write("Message sent successfully\n")
+            
+        except Exception as e:
+            f.write(f"Error in manage_services: {str(e)}\n")
+            await update.callback_query.message.edit_text(
+                "Произошла ошибка при получении списка услуг.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data="admin_menu")
+                ]])
+            )
+        finally:
+            db.close()
         
     db = SessionLocal()
     try:

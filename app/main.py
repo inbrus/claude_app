@@ -46,9 +46,16 @@ from app.bot.notifications import (
 
 # Настройка логирования
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", 
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("debug.log"),
+        logging.StreamHandler()
+    ]
 )
+# Создаем логгер для отладки
+debug_logger = logging.getLogger("debug")
+debug_logger.setLevel(logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 # Создание FastAPI приложения
