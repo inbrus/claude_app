@@ -83,7 +83,7 @@ async def start_command(update: Update, context):
     # Проверяем, является ли пользователь администратором
     db = SessionLocal()
     try:
-        admin = crud_admin.get_by_telegram_id(db, str(update.effective_user.id))
+        admin = await crud_admin.get_by_telegram_id(db, str(update.effective_user.id))
         if admin and admin.is_active:
             keyboard.append([InlineKeyboardButton("Админ панель", callback_data="admin_menu")])
             context.user_data['admin_id'] = admin.id
