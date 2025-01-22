@@ -2,11 +2,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from datetime import datetime, timedelta
 import re
+import logging
 from app.crud.crud_service import crud_service
 from app.crud.crud_appointment import crud_appointment
 from app.schemas.service import ServiceCreate, ServiceUpdate
 from app.db.session import SessionLocal
 from app.bot.notifications import notify_admin_new_appointment
+
+logger = logging.getLogger(__name__)
 
 # Состояния диалога
 (
@@ -23,8 +26,20 @@ service_data = {}
 
 async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление услугами"""
+    print("manage_services called")  # Отладочный вывод
+    logger.info("manage_services called")  # Логирование
     db = SessionLocal()
     try:
+        print("Getting services from database")  # Отладочный вывод
+        logger.info("Getting services from database")  # Логирование
+        try:
+            services = crud_service.get_multi(db)
+            print(f"Got services: {services}")  # Отладочный вывод
+            logger.info(f"Got services: {services}")  # Логирование
+        except Exception as e:
+            print(f"Error getting services: {e}")  # Отладочный вывод
+            logger.error(f"Error getting services: {e}")  # Логирование
+            services = []
         services = crud_service.get_multi(db)
         
         text = "Управление услугами:\n\n"
