@@ -26,20 +26,52 @@ service_data = {}
 
 async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление услугами"""
-    print("manage_services called")  # Отладочный вывод
-    logger.info("manage_services called")  # Логирование
+    print("manage_services called")
+    logger.info("manage_services called")
+    
+    if not update.callback_query:
+        print("No callback query")
+        return
+        
     db = SessionLocal()
     try:
-        print("Getting services from database")  # Отладочный вывод
-        logger.info("Getting services from database")  # Логирование
+        print("Getting services from database")
         try:
             services = crud_service.get_multi(db)
-            print(f"Got services: {services}")  # Отладочный вывод
-            logger.info(f"Got services: {services}")  # Логирование
+            print(f"Got services: {services}")
+            
+            text = "Управление услугами:\n\n"
+            if services:
+                for service in services:
+                    print(f"Processing service: {service.name}")
+                    status = "✅" if service.is_active else "❌"
+                    text += f"{status} {service.name} - {service.price}₽\n"
+            else:
+                text += "Услуги не добавлены."
+            
+            keyboard = [
+                [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
+                [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
+            ]
+            
+            print(f"Final text: {text}")
+            print(f"Keyboard: {keyboard}")
+            
+            await update.callback_query.message.edit_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            print("Message sent successfully")
+            
         except Exception as e:
-            print(f"Error getting services: {e}")  # Отладочный вывод
-            logger.error(f"Error getting services: {e}")  # Логирование
-            services = []
+            print(f"Error in manage_services: {str(e)}")
+            logger.error(f"Error in manage_services: {str(e)}")
+            await update.callback_query.message.edit_text(
+                "Произошла ошибка при получении списка услуг.",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("« Назад", callback_data="admin_menu")
+                ]])
+            )
         services = crud_service.get_multi(db)
         
         text = "Управление услугами:\n\n"
