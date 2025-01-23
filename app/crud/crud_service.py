@@ -7,15 +7,19 @@ from app.schemas.service import ServiceCreate, ServiceUpdate, ServiceList
 
 class CRUDService(CRUDBase[Service, ServiceCreate, ServiceUpdate]):
     def get_multi(self, db: Session, *, skip: int = 0, limit: int = 100) -> List[Service]:
-        """Получить все услуги с загрузкой категорий"""
-        return (
-            db.query(self.model)
-            .options(joinedload(Service.category))
-            .order_by(Service.category_id, Service.order)
-            .offset(skip)
-            .limit(limit)
-            .all()
-        )
+        """Получить все услуги"""
+        try:
+            with open("debug.log", "a") as f:
+                f.write("\n=== get_multi called ===\n")
+                services = db.query(self.model).offset(skip).limit(limit).all()
+                f.write(f"Got services: {services}\n")
+                return services
+        except Exception as e:
+            with open("debug.log", "a") as f:
+                f.write(f"Error in get_multi: {str(e)}\n")
+                import traceback
+                f.write(f"Traceback: {traceback.format_exc()}\n")
+            raise
 
     def get_active(self, db: Session) -> List[Service]:
         """Получить все активные услуги"""
