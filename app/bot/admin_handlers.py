@@ -2,11 +2,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from datetime import datetime, timedelta
 import re
+import logging
 from app.crud.crud_service import crud_service
 from app.crud.crud_appointment import crud_appointment
 from app.schemas.service import ServiceCreate, ServiceUpdate
 from app.db.session import SessionLocal
 from app.bot.notifications import notify_admin_new_appointment
+
+logger = logging.getLogger(__name__)
 
 # Состояния диалога
 (
@@ -23,38 +26,70 @@ service_data = {}
 
 async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Управление услугами"""
-    db = SessionLocal()
-    try:
-        services = crud_service.get_multi(db)
+    debug_file = "debug.log"
+    with open(debug_file, "a") as f:
+        f.write("\n=== manage_services called ===\n")
         
-        text = "Управление услугами:\n\n"
-        if services:
-            for service in services:
-                status = "✅" if service.is_active else "❌"
-                text += f"{status} {service.name} - {service.price}₽\n"
-        else:
-            text += "Услуги не добавлены."
-        
-        keyboard = [
-            [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
-            [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
-        ]
-        
-        # Добавляем кнопки для каждой услуги
-        for service in services:
-            keyboard.insert(-1, [
-                InlineKeyboardButton(
-                    f"⚙️ {service.name}",
-                    callback_data=f"edit_service_{service.id}"
+        if not update.callback_query:
+            f.write("No callback query\n")
+            return
+            
+        f.write("Getting services from database\n")
+        db = SessionLocal()
+        try:
+            try:
+                services = crud_service.get_multi(db)
+                f.write(f"Got services: {services}\n")
+                
+                text = "Управление услугами:\n\n"
+                if services:
+                    for service in services:
+                        f.write(f"Processing service: {service}\n")
+                        status = "✅" if service.is_active else "❌"
+                        text += f"{status} {service.name} - {service.price}₽\n"
+                else:
+                    text += "Услуги не добавлены."
+                    f.write("No services found\n")
+                
+                keyboard = [
+                    [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
+                    [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
+                ]
+                
+                # Добавляем кнопки для каждой услуги
+                if services:
+                    for service in services:
+                        keyboard.insert(-1, [
+                            InlineKeyboardButton(
+                                f"⚙️ {service.name}",
+                                callback_data=f"edit_service_{service.id}"
+                            )
+                        ])
+                
+                f.write(f"Final text: {text}\n")
+                f.write(f"Keyboard: {keyboard}\n")
+                
+                await update.callback_query.message.edit_text(
+                    text,
+                    reply_markup=InlineKeyboardMarkup(keyboard)
                 )
-            ])
-        
-        await update.callback_query.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    finally:
-        db.close()
+                f.write("Message sent successfully\n")
+                
+            except Exception as e:
+                f.write(f"Error in manage_services: {str(e)}\n")
+                f.write(f"Error type: {type(e)}\n")
+                f.write(f"Error args: {e.args}\n")
+                import traceback
+                f.write(f"Traceback: {traceback.format_exc()}\n")
+                await update.callback_query.message.edit_text(
+                    "Произошла ошибка при получении списка услуг.",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("« Назад", callback_data="admin_menu")
+                    ]])
+                )
+        finally:
+            db.close()
+            f.write("Database session closed\n")
 
 async def edit_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Меню редактирования услуги"""
