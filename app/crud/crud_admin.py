@@ -4,7 +4,11 @@ from typing import Optional
 
 class CRUDAdmin:
     async def get_by_telegram_id(self, db: Session, telegram_id: str) -> Optional[Admin]:
-        return db.query(Admin).filter(Admin.telegram_id == telegram_id).first()
+        result = db.query(Admin).filter(Admin.telegram_id == telegram_id).first()
+        return result
+
+    async def get_first(self, db: Session) -> Optional[Admin]:
+        return db.query(Admin).first()
 
     async def create(self, db: Session, telegram_id: str, username: str) -> Admin:
         db_admin = Admin(

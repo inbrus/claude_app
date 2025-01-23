@@ -2,11 +2,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from datetime import datetime, timedelta
 import re
+import logging
 from app.crud.crud_service import crud_service
 from app.crud.crud_appointment import crud_appointment
 from app.schemas.service import ServiceCreate, ServiceUpdate
 from app.db.session import SessionLocal
 from app.bot.notifications import notify_admin_new_appointment
+
+logger = logging.getLogger(__name__)
 
 # Состояния диалога
 (
@@ -87,32 +90,6 @@ async def manage_services(update: Update, context: ContextTypes.DEFAULT_TYPE):
         finally:
             db.close()
             f.write("Database session closed\n")
-            for service in services:
-                status = "✅" if service.is_active else "❌"
-                text += f"{status} {service.name} - {service.price}₽\n"
-        else:
-            text += "Услуги не добавлены."
-        
-        keyboard = [
-            [InlineKeyboardButton("➕ Добавить услугу", callback_data="add_service")],
-            [InlineKeyboardButton("« Назад", callback_data="admin_menu")]
-        ]
-        
-        # Добавляем кнопки для каждой услуги
-        for service in services:
-            keyboard.insert(-1, [
-                InlineKeyboardButton(
-                    f"⚙️ {service.name}",
-                    callback_data=f"edit_service_{service.id}"
-                )
-            ])
-        
-        await update.callback_query.message.edit_text(
-            text,
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-    finally:
-        db.close()
 
 async def edit_service(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Меню редактирования услуги"""
