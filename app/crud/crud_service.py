@@ -6,6 +6,17 @@ from app.models.models import Service, ServiceCategory
 from app.schemas.service import ServiceCreate, ServiceUpdate, ServiceList
 
 class CRUDService(CRUDBase[Service, ServiceCreate, ServiceUpdate]):
+    def get_multi(self, db: Session, *, skip: int = 0, limit: int = 100) -> List[Service]:
+        """Получить все услуги с загрузкой категорий"""
+        return (
+            db.query(self.model)
+            .options(joinedload(Service.category))
+            .order_by(Service.category_id, Service.order)
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
+
     def get_active(self, db: Session) -> List[Service]:
         """Получить все активные услуги"""
         return (
